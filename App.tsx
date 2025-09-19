@@ -11,8 +11,15 @@ import HistoryDropdown from './components/HistoryDropdown';
 import PlusIcon from './components/PlusIcon';
 import SunIcon from './components/SunIcon';
 import MoonIcon from './components/MoonIcon';
+import PromptEditorModal from './components/PromptEditorModal';
 
 const MAX_HISTORY_LENGTH = 20;
+
+const DEFAULT_AGENT_CONFIG = {
+  name: 'Muse',
+  instruction: "You are a pensive museum guide named {agentName}. Your task is to respond to the user while keeping the artwork in mind. You must only ever respond in a perfect 5-7-5 syllable English haiku. After the haiku, on a new line, you must ask a single, short, open-ended question to encourage the user to reflect even more deeply. Do not add any other text, greetings, or explanations. Your response must be formatted with the three lines of the haiku first, followed by a single blank line, and then the question."
+};
+
 
 const App: React.FC = () => {
   const [history, setHistory] = useState<Conversation[]>([]);
@@ -27,6 +34,8 @@ const App: React.FC = () => {
     }
     return 'dark';
   });
+  const [isPromptEditorOpen, setIsPromptEditorOpen] = useState(false);
+  const [agentConfig, setAgentConfig] = useState(DEFAULT_AGENT_CONFIG);
   const chatEndRef = useRef<HTMLDivElement | null>(null);
 
   // Effect to apply theme class and save preference
@@ -39,6 +48,18 @@ const App: React.FC = () => {
 
   // Load from localStorage on initial mount
   useEffect(() => {
+    // Load agent config
+    const savedConfig = localStorage.getItem('agent-config');
+    if (savedConfig) {
+      try {
+        setAgentConfig(JSON.parse(savedConfig));
+      } catch (e) {
+        console.error("Failed to parse agent config, using default.", e);
+        setAgentConfig(DEFAULT_AGENT_CONFIG);
+      }
+    }
+
+    // Load conversation history
     try {
       const savedHistory = localStorage.getItem('haiku-history');
       if (savedHistory) {
@@ -72,6 +93,17 @@ const App: React.FC = () => {
 
   const toggleTheme = () => {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+  };
+
+  const handleSaveAgentConfig = (newName: string, newInstruction: string) => {
+    const newConfig = { name: newName, instruction: newInstruction };
+    setAgentConfig(newConfig);
+    localStorage.setItem('agent-config', JSON.stringify(newConfig));
+    setIsPromptEditorOpen(false);
+  };
+
+  const getSystemInstruction = () => {
+    return agentConfig.instruction.replace(/{agentName}/g, agentConfig.name);
   };
 
   const startNewConversation = (isInitial = false) => {
@@ -121,6 +153,7 @@ const App: React.FC = () => {
     setConversationState('idle'); 
 
     try {
+      // Step 1: Fetch and display the artwork immediately.
       const { base64Image, mimeType, title, details } = await getRandomArtwork();
       
       const userMessage: Message = {
@@ -131,9 +164,20 @@ const App: React.FC = () => {
         artworkDetails: details,
       };
 
-      await new Promise(res => setTimeout(res, 100));
+      setHistory(prev => prev.map(conv => {
+        if (conv.id === currentConversationId) {
+          return {
+            ...conv,
+            messages: [...conv.messages, userMessage],
+            currentArtwork: { base64Image, mimeType },
+          };
+        }
+        return conv;
+      }));
 
-      const haiku = await getHaikuForImage(base64Image, mimeType);
+      // Step 2: Now that the image is visible, get the haiku.
+      const systemInstruction = getSystemInstruction();
+      const haiku = await getHaikuForImage(base64Image, mimeType, systemInstruction);
       const aiMessage: Message = {
         id: `ai-${Date.now()}`,
         author: 'ai',
@@ -142,17 +186,16 @@ const App: React.FC = () => {
       
       setHistory(prev => prev.map(conv => {
         if (conv.id === currentConversationId) {
-          const newMessages = [...conv.messages, userMessage, aiMessage];
           let newTitle = conv.title;
-          if (conv.messages.length === 1 && conv.title === 'New Conversation') {
+          // Set conversation title based on the first AI response.
+          if (conv.title === 'New Conversation') {
             const lines = haiku.split('\n').filter(line => line.trim() !== '');
             newTitle = lines[lines.length - 1] || 'Untitled Haiku';
           }
           return {
             ...conv,
             title: newTitle,
-            messages: newMessages,
-            currentArtwork: { base64Image, mimeType },
+            messages: [...conv.messages, aiMessage],
           };
         }
         return conv;
@@ -196,7 +239,8 @@ const App: React.FC = () => {
     
     try {
       const { base64Image, mimeType } = currentConversation.currentArtwork;
-      const reflection = await getReflectionForImageAndText(base64Image, mimeType, responseText);
+      const systemInstruction = getSystemInstruction();
+      const reflection = await getReflectionForImageAndText(base64Image, mimeType, responseText, systemInstruction);
       const aiMessage: Message = {
         id: `ai-reflection-${Date.now()}`,
         author: 'ai',
@@ -265,9 +309,15 @@ const App: React.FC = () => {
             onSelectConversation={handleSelectConversation}
           />
         </div>
-        <h1 className="text-lg md:text-xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-500 dark:from-teal-200 dark:to-cyan-400 whitespace-nowrap">
-          The Haiku Curator
-        </h1>
+        <button 
+            onClick={() => setIsPromptEditorOpen(true)}
+            className="transition-opacity hover:opacity-80"
+            aria-label="Edit agent prompt"
+        >
+            <h1 className="text-lg md:text-xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-teal-400 to-cyan-500 dark:from-teal-200 dark:to-cyan-400 whitespace-nowrap">
+            The Haiku Curator
+            </h1>
+        </button>
         <div className="flex-1 flex justify-end items-center gap-2">
           <button
             onClick={toggleTheme}
@@ -307,6 +357,14 @@ const App: React.FC = () => {
           {renderFooterContent()}
         </div>
       </footer>
+
+      <PromptEditorModal
+        isOpen={isPromptEditorOpen}
+        onClose={() => setIsPromptEditorOpen(false)}
+        onSave={handleSaveAgentConfig}
+        currentName={agentConfig.name}
+        currentInstruction={agentConfig.instruction}
+      />
     </div>
   );
 };

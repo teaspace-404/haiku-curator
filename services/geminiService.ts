@@ -1,3 +1,4 @@
+
 import { GoogleGenAI } from "@google/genai";
 
 // Assume process.env.API_KEY is available in the execution environment.
@@ -24,7 +25,7 @@ const fileToGenerativePart = (base64: string, mimeType: string) => {
   };
 };
 
-export const getHaikuForImage = async (base64Image: string, mimeType: string): Promise<string> => {
+export const getHaikuForImage = async (base64Image: string, mimeType: string, systemInstruction: string): Promise<string> => {
   try {
     const imagePart = fileToGenerativePart(base64Image, mimeType);
     
@@ -32,7 +33,7 @@ export const getHaikuForImage = async (base64Image: string, mimeType: string): P
         model: 'gemini-2.5-flash',
         contents: { parts: [imagePart] },
         config: {
-            systemInstruction: "You are a pensive museum guide named 'Muse'. You only ever respond in a perfect 5-7-5 syllable English haiku. After the haiku, on a new line, you must ask a single, short, open-ended question to encourage the user to reflect deeply on the artwork they've shared. Do not add any other text, greetings, or explanations. Your response must be formatted with the three lines of the haiku first, followed by a single blank line, and then the question.",
+            systemInstruction,
         },
     });
 
@@ -44,7 +45,7 @@ export const getHaikuForImage = async (base64Image: string, mimeType: string): P
   }
 };
 
-export const getReflectionForImageAndText = async (base64Image: string, mimeType: string, userText: string): Promise<string> => {
+export const getReflectionForImageAndText = async (base64Image: string, mimeType: string, userText: string, systemInstruction: string): Promise<string> => {
   try {
     const imagePart = fileToGenerativePart(base64Image, mimeType);
     const textPart = { text: userText };
@@ -53,7 +54,7 @@ export const getReflectionForImageAndText = async (base64Image: string, mimeType
         model: 'gemini-2.5-flash',
         contents: { parts: [imagePart, textPart] },
         config: {
-            systemInstruction: "You are a pensive museum guide named 'Muse'. The user has shared an image of artwork and their personal reflection on it. Your task is to respond to their reflection while keeping the artwork in mind. You must only ever respond in a perfect 5-7-5 syllable English haiku. After the haiku, on a new line, you must ask a single, short, open-ended question to encourage the user to reflect even more deeply. Do not add any other text, greetings, or explanations.",
+            systemInstruction,
         },
     });
     
