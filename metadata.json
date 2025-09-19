@@ -1,0 +1,5 @@
+{
+  "name": "Museum Haiku Guide",
+  "description": "A reflective museum guide that responds to photos of artwork with insightful haikus, prompting visitors to contemplate what they've seen.",
+  "requestFramePermissions": []
+}
